@@ -37,7 +37,7 @@ services:
       - "${DATA_DIR}/components/mongodb/data/conf:/etc/mongo"
     environment:
       - TZ=Asia/Shanghai
-      - wiredTigerCacheSizeGB=1
+      - wiredTigerCacheSizeGB=0.25
       - MONGO_INITDB_ROOT_USERNAME=root
       - MONGO_INITDB_ROOT_PASSWORD=openIM123
       - MONGO_INITDB_DATABASE=openim_v3
@@ -99,8 +99,6 @@ services:
       - ETCD_INITIAL_CLUSTER_TOKEN=tkn
       - ETCD_INITIAL_CLUSTER_STATE=new
       - ALLOW_NONE_AUTHENTICATION=no
-
-      ## Optional: Enable etcd authentication by setting the following credentials
       - ETCD_ROOT_USER=root
       - ETCD_ROOT_PASSWORD=openIM123
       - ETCD_USERNAME=openIM
@@ -126,7 +124,6 @@ services:
         if ! etcdctl --endpoints=http://127.0.0.1:2379 auth status | grep -q "Authentication Status: true"; then
           echo "Authentication is disabled. Creating users and enabling..."
           
-          # Create users and setup permissions
           etcdctl --endpoints=http://127.0.0.1:2379 user add $${ETCD_ROOT_USER} --new-user-password=$${ETCD_ROOT_PASSWORD} || true
           etcdctl --endpoints=http://127.0.0.1:2379 user add $${ETCD_USERNAME} --new-user-password=$${ETCD_PASSWORD} || true
           
@@ -135,26 +132,19 @@ services:
           etcdctl --endpoints=http://127.0.0.1:2379 role grant-permission openim-role --prefix=true readwrite "" || true
           etcdctl --endpoints=http://127.0.0.1:2379 user grant-role $${ETCD_USERNAME} openim-role || true
           
-          etcdctl --endpoints=http://127.0.0.1:2379 user grant-role $${ETCD_ROOT_USER} $${ETCD_USERNAME} root || true
-          
           echo "Enabling authentication..."
           etcdctl --endpoints=http://127.0.0.1:2379 auth enable
           echo "Authentication enabled successfully"
         else
           echo "Authentication is already enabled. Checking OpenIM user..."
           
-          # Check if openIM user exists and can perform operations
           if ! etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_USERNAME}:$${ETCD_PASSWORD} put /test/auth "auth-check" &>/dev/null; then
             echo "OpenIM user test failed. Recreating user with root credentials..."
-            
-            # Try to create/update the openIM user using root credentials
             etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_ROOT_USER}:$${ETCD_ROOT_PASSWORD} user add $${ETCD_USERNAME} --new-user-password=$${ETCD_PASSWORD} --no-password-file || true
             etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_ROOT_USER}:$${ETCD_ROOT_PASSWORD} role add openim-role || true
             etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_ROOT_USER}:$${ETCD_ROOT_PASSWORD} role grant-permission openim-role --prefix=true readwrite / || true
             etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_ROOT_USER}:$${ETCD_ROOT_PASSWORD} role grant-permission openim-role --prefix=true readwrite "" || true
             etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_ROOT_USER}:$${ETCD_ROOT_PASSWORD} user grant-role $${ETCD_USERNAME} openim-role || true
-            etcdctl --endpoints=http://127.0.0.1:2379 user grant-role $${ETCD_ROOT_USER} $${ETCD_USERNAME} root || true
-            
             echo "OpenIM user recreated with required permissions"
           else
             echo "OpenIM user exists and has correct permissions"
@@ -193,43 +183,17 @@ services:
     volumes:
       - "${DATA_DIR}/components/kafka:/bitnami/kafka"
     environment:
-      #KAFKA_HEAP_OPTS: "-Xms128m -Xmx256m"
       TZ: Asia/Shanghai
-      # Unique identifier for the Kafka node (required in controller mode)
       KAFKA_CFG_NODE_ID: 0
-      # Defines the roles this Kafka node plays: broker, controller, or both
       KAFKA_CFG_PROCESS_ROLES: controller,broker
-      # Specifies which nodes are controller nodes for quorum voting.
-      # The syntax follows the KRaft mode (no ZooKeeper): node.id@host:port
-      # The controller listener endpoint here is kafka:9093
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
-      # Specifies which listener is used for controller-to-controller communication
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      # Default number of partitions for new topics
       KAFKA_NUM_PARTITIONS: 8
-      # Whether to enable automatic topic creation
       KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
-      # Kafka internal listeners; Kafka supports multiple ports with different protocols
-      # Each port is used for a specific purpose: INTERNAL for internal broker communication,
-      # CONTROLLER for controller communication, EXTERNAL for external client connections.
-      # These logical listener names are mapped to actual protocols via KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP
-      # In short, Kafka is listening on three logical ports: 9092 for internal communication,
-      # 9093 for controller traffic, and 9094 for external access.
       KAFKA_CFG_LISTENERS: "INTERNAL://:9092,CONTROLLER://:9093,EXTERNAL://:9094"
-      # Addresses advertised to clients. INTERNAL://kafka:9092 uses the internal Docker service name 'kafka',
-      # so other containers can access Kafka via kafka:9092.
-      # EXTERNAL://localhost:19094 is the address external clients (e.g., in the LAN) should use to connect.
-      # If Kafka is deployed on a different machine than IM, 'localhost'(or 'kafka') should be replaced with the LAN IP.
       KAFKA_CFG_ADVERTISED_LISTENERS: "INTERNAL://kafka:9092,EXTERNAL://kafka:9094"
-      # Maps logical listener names to actual protocols.
-      # Supported protocols include: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL
       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,INTERNAL:PLAINTEXT"
-      # Defines which listener is used for inter-broker communication within the Kafka cluster
       KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "INTERNAL"
-
-      # Authentication configuration variables - comment out to disable auth
-      # KAFKA_USERNAME: "openIM"
-      # KAFKA_PASSWORD: "openIM123"
     command:
       - /bin/sh
       - -c
@@ -238,14 +202,12 @@ services:
         /opt/bitnami/scripts/kafka/entrypoint.sh /opt/bitnami/scripts/kafka/run.sh &
         KAFKA_PID=$$!
 
-        # Wait for Kafka to be ready
         echo "Waiting for Kafka to be ready..."
         until /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list &>/dev/null; do
           echo "Waiting for Kafka..."
           sleep 2
         done
 
-        # Create required topics if they don't exist
         echo "Creating required topics..."
         /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --topic toMongo --partitions 8 --replication-factor 1 || echo "Failed to create toMongo topic"
         /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --topic toRedis --partitions 8 --replication-factor 1 || echo "Failed to create toRedis topic"
@@ -253,7 +215,6 @@ services:
         /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --topic toOfflinePush --partitions 8 --replication-factor 1 || echo "Failed to create toOfflinePush topic"
         echo "Topics created successfully!"
 
-        # Keep the container running
         wait $$KAFKA_PID
     deploy:
       resources:
@@ -385,33 +346,25 @@ services:
       timeout: 60s
       retries: 10
     environment:
-      # Existing IMENV variables
       - IMENV_MONGODB_ADDRESS=${MONGO_ADDRESS}
       - IMENV_MONGODB_USERNAME=${MONGO_USERNAME}
       - IMENV_MONGODB_PASSWORD=${MONGO_PASSWORD}
-      - IMENV_KAFKA_ADDRESS=${KAFKA_ADDRESS}
-      - IMENV_KAFKA_USERNAME=${KAFKA_USERNAME}
-      - IMENV_KAFKA_PASSWORD=${KAFKA_PASSWORD}
-      - IMENV_DISCOVERY_ETCD_ADDRESS=${ETCD_ADDRESS}
       - IMENV_REDIS_ADDRESS=${REDIS_ADDRESS}
       - IMENV_REDIS_PASSWORD=${REDIS_PASSWORD}
-      - IMENV_DISCOVERY_ETCD_USERNAME=${ETCD_USERNAME}
-      - IMENV_DISCOVERY_ETCD_PASSWORD=${ETCD_PASSWORD}
       - IMENV_MINIO_INTERNALADDRESS=${MINIO_INTERNAL_ADDRESS}
       - IMENV_MINIO_EXTERNALADDRESS=${MINIO_EXTERNAL_ADDRESS}
       - IMENV_MINIO_ACCESSKEYID=${MINIO_ACCESS_KEY_ID}
       - IMENV_MINIO_SECRETACCESSKEY=${MINIO_SECRET_ACCESS_KEY}
       - IMENV_SHARE_SECRET=${OPENIM_SECRET}
       - IMENV_OPENIM_API_PROMETHEUS_GRAFANAURL=${GRAFANA_URL}
-
-      # Additional ETCD configuration for proper authentication
-      - ETCD_ENDPOINTS=http://etcd:2379
-      - ETCD_USERNAME=openIM
-      - ETCD_PASSWORD=openIM123
-      - ETCD_SCHEMA=http
-
-      # Kafka configuration without SASL (for now)
-      - KAFKA_BROKERS=kafka:9092
+      # Kafka (PLAINTEXT on 9092, no SASL)
+      - IMENV_KAFKA_ADDRESS=kafka:9092
+      - IMENV_KAFKA_USERNAME=
+      - IMENV_KAFKA_PASSWORD=
+      # etcd creds used by OpenIM
+      - IMENV_DISCOVERY_ETCD_ADDRESS=etcd:2379
+      - IMENV_DISCOVERY_ETCD_USERNAME=openIM
+      - IMENV_DISCOVERY_ETCD_PASSWORD=openIM123
     restart: always
     deploy:
       resources:
@@ -438,23 +391,17 @@ services:
       timeout: 60s
       retries: 10
     environment:
-      # Existing CHATENV variables
       - CHATENV_MONGODB_ADDRESS=${MONGO_ADDRESS}
       - CHATENV_MONGODB_USERNAME=${MONGO_USERNAME}
       - CHATENV_MONGODB_PASSWORD=${MONGO_PASSWORD}
-      - CHATENV_DISCOVERY_ETCD_ADDRESS=${ETCD_ADDRESS}
       - CHATENV_REDIS_ADDRESS=${REDIS_ADDRESS}
       - CHATENV_REDIS_PASSWORD=${REDIS_PASSWORD}
       - CHATENV_SHARE_OPENIM_SECRET=${OPENIM_SECRET}
-      - CHATENV_DISCOVERY_ETCD_USERNAME=${ETCD_USERNAME}
-      - CHATENV_DISCOVERY_ETCD_PASSWORD=${ETCD_PASSWORD}
       - CHATENV_SHARE_OPENIM_APIURL=${API_URL}
-
-      # Additional ETCD configuration for proper authentication
-      - ETCD_ENDPOINTS=http://etcd:2379
-      - ETCD_USERNAME=openIM
-      - ETCD_PASSWORD=openIM123
-      - ETCD_SCHEMA=http
+      # etcd creds used by OpenIM Chat
+      - CHATENV_DISCOVERY_ETCD_ADDRESS=etcd:2379
+      - CHATENV_DISCOVERY_ETCD_USERNAME=openIM
+      - CHATENV_DISCOVERY_ETCD_PASSWORD=openIM123
     ports:
       - "${CHAT_API_PORT}:10008"
       - "${ADMIN_API_PORT}:10009"
