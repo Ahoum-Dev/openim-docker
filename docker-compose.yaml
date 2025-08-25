@@ -184,38 +184,25 @@ services:
       - "${DATA_DIR}/components/kafka:/bitnami/kafka"
     environment:
       TZ: Asia/Shanghai
+
+      # Single-node KRaft, simple PLAINTEXT listener
       KAFKA_CFG_NODE_ID: 0
       KAFKA_CFG_PROCESS_ROLES: controller,broker
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_NUM_PARTITIONS: 8
+
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+
       KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_CFG_LISTENERS: "INTERNAL://:9092,CONTROLLER://:9093,EXTERNAL://:9094"
-      KAFKA_CFG_ADVERTISED_LISTENERS: "INTERNAL://kafka:9092,EXTERNAL://kafka:9094"
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,INTERNAL:PLAINTEXT"
-      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "INTERNAL"
-    command:
-      - /bin/sh
-      - -c
-      - |
-        echo "Starting Kafka with topic creation..."
-        /opt/bitnami/scripts/kafka/entrypoint.sh /opt/bitnami/scripts/kafka/run.sh &
-        KAFKA_PID=$$!
-
-        echo "Waiting for Kafka to be ready..."
-        until /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list &>/dev/null; do
-          echo "Waiting for Kafka..."
-          sleep 2
-        done
-
-        echo "Creating required topics..."
-        /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --topic toMongo --partitions 8 --replication-factor 1 || echo "Failed to create toMongo topic"
-        /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --topic toRedis --partitions 8 --replication-factor 1 || echo "Failed to create toRedis topic"
-        /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --topic toPush --partitions 8 --replication-factor 1 || echo "Failed to create toPush topic"
-        /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --topic toOfflinePush --partitions 8 --replication-factor 1 || echo "Failed to create toOfflinePush topic"
-        echo "Topics created successfully!"
-
-        wait $$KAFKA_PID
+      KAFKA_NUM_PARTITIONS: 8
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     deploy:
       resources:
         limits:
@@ -373,11 +360,16 @@ services:
         reservations:
           memory: 512M
     depends_on:
-      - mongo
-      - redis
-      - etcd
-      - kafka
-      - minio
+      kafka:
+        condition: service_healthy
+      mongo:
+        condition: service_started
+      redis:
+        condition: service_started
+      etcd:
+        condition: service_started
+      minio:
+        condition: service_started
     networks:
       - openim
 
@@ -413,11 +405,17 @@ services:
         reservations:
           memory: 1G
     depends_on:
-      - mongo
-      - redis
-      - etcd
-      - kafka
-      - minio
-      - openim-server
+      kafka:
+        condition: service_healthy
+      openim-server:
+        condition: service_started
+      mongo:
+        condition: service_started
+      redis:
+        condition: service_started
+      etcd:
+        condition: service_started
+      minio:
+        condition: service_started
     networks:
       - openim
