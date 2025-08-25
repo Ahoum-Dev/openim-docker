@@ -120,49 +120,50 @@ services:
         if [ -n "$${ETCD_ROOT_USER}" ] && [ -n "$${ETCD_ROOT_PASSWORD}" ] && [ -n "$${ETCD_USERNAME}" ] && [ -n "$${ETCD_PASSWORD}" ]; then
           echo "Authentication credentials provided. Setting up authentication..."
 
-        echo "Checking authentication status..."
-        if ! etcdctl --endpoints=http://127.0.0.1:2379 auth status | grep -q "Authentication Status: true"; then
-          echo "Authentication is disabled. Creating users and enabling..."
-          
-          etcdctl --endpoints=http://127.0.0.1:2379 user add $${ETCD_ROOT_USER} --new-user-password=$${ETCD_ROOT_PASSWORD} || true
-          etcdctl --endpoints=http://127.0.0.1:2379 user add $${ETCD_USERNAME} --new-user-password=$${ETCD_PASSWORD} || true
-          
-          etcdctl --endpoints=http://127.0.0.1:2379 role add openim-role || true
-          etcdctl --endpoints=http://127.0.0.1:2379 role grant-permission openim-role --prefix=true readwrite / || true
-          etcdctl --endpoints=http://127.0.0.1:2379 role grant-permission openim-role --prefix=true readwrite "" || true
-          etcdctl --endpoints=http://127.0.0.1:2379 user grant-role $${ETCD_USERNAME} openim-role || true
-          
-          echo "Enabling authentication..."
-          etcdctl --endpoints=http://127.0.0.1:2379 auth enable
-          echo "Authentication enabled successfully"
-        else
-          echo "Authentication is already enabled. Checking OpenIM user..."
-          
-          if ! etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_USERNAME}:$${ETCD_PASSWORD} put /test/auth "auth-check" &>/dev/null; then
-            echo "OpenIM user test failed. Recreating user with root credentials..."
-            etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_ROOT_USER}:$${ETCD_ROOT_PASSWORD} user add $${ETCD_USERNAME} --new-user-password=$${ETCD_PASSWORD} --no-password-file || true
-            etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_ROOT_USER}:$${ETCD_ROOT_PASSWORD} role add openim-role || true
-            etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_ROOT_USER}:$${ETCD_ROOT_PASSWORD} role grant-permission openim-role --prefix=true readwrite / || true
-            etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_ROOT_USER}:$${ETCD_ROOT_PASSWORD} role grant-permission openim-role --prefix=true readwrite "" || true
-            etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_ROOT_USER}:$${ETCD_ROOT_PASSWORD} user grant-role $${ETCD_USERNAME} openim-role || true
-            echo "OpenIM user recreated with required permissions"
+          echo "Checking authentication status..."
+          if ! etcdctl --endpoints=http://127.0.0.1:2379 auth status | grep -q "Authentication Status: true"; then
+            echo "Authentication is disabled. Creating users and enabling..."
+
+            etcdctl --endpoints=http://127.0.0.1:2379 user add $${ETCD_ROOT_USER} --new-user-password=$${ETCD_ROOT_PASSWORD} || true
+            etcdctl --endpoints=http://127.0.0.1:2379 user add $${ETCD_USERNAME} --new-user-password=$${ETCD_PASSWORD} || true
+
+            etcdctl --endpoints=http://127.0.0.1:2379 role add openim-role || true
+            etcdctl --endpoints=http://127.0.0.1:2379 role grant-permission openim-role --prefix=true readwrite / || true
+            etcdctl --endpoints=http://127.0.0.1:2379 role grant-permission openim-role --prefix=true readwrite "" || true
+            etcdctl --endpoints=http://127.0.0.1:2379 user grant-role $${ETCD_USERNAME} openim-role || true
+
+            echo "Enabling authentication..."
+            etcdctl --endpoints=http://127.0.0.1:2379 auth enable
+            echo "Authentication enabled successfully"
           else
-            echo "OpenIM user exists and has correct permissions"
-            etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_USERNAME}:$${ETCD_PASSWORD} del /test/auth &>/dev/null
+            echo "Authentication is already enabled. Checking OpenIM user..."
+
+            if ! etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_USERNAME}:$${ETCD_PASSWORD} put /test/auth "auth-check" &>/dev/null; then
+              echo "OpenIM user test failed. Recreating user with root credentials..."
+              etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_ROOT_USER}:$${ETCD_ROOT_PASSWORD} user add $${ETCD_USERNAME} --new-user-password=$${ETCD_PASSWORD} --no-password-file || true
+              etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_ROOT_USER}:$${ETCD_ROOT_PASSWORD} role add openim-role || true
+              etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_ROOT_USER}:$${ETCD_ROOT_PASSWORD} role grant-permission openim-role --prefix=true readwrite / || true
+              etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_ROOT_USER}:$${ETCD_ROOT_PASSWORD} role grant-permission openim-role --prefix=true readwrite "" || true
+              etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_ROOT_USER}:$${ETCD_ROOT_PASSWORD} user grant-role $${ETCD_USERNAME} openim-role || true
+              echo "OpenIM user recreated with required permissions"
+            else
+              echo "OpenIM user exists and has correct permissions"
+              etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_USERNAME}:$${ETCD_PASSWORD} del /test/auth &>/dev/null
+            fi
           fi
-        fi
-        echo "Testing authentication with OpenIM user..."
-        if etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_USERNAME}:$${ETCD_PASSWORD} put /test/auth "auth-works"; then
-          echo "Authentication working properly"
-          etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_USERNAME}:$${ETCD_PASSWORD} del /test/auth
-        else
-          echo "WARNING: Authentication test failed"
+
+          echo "Testing authentication with OpenIM user..."
+          if etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_USERNAME}:$${ETCD_PASSWORD} put /test/auth "auth-works"; then
+            echo "Authentication working properly"
+            etcdctl --endpoints=http://127.0.0.1:2379 --user=$${ETCD_USERNAME}:$${ETCD_PASSWORD} del /test/auth
+          else
+            echo "WARNING: Authentication test failed"
           fi
         else
           echo "No authentication credentials provided. Running in no-auth mode."
           echo "To enable authentication, set ETCD_ROOT_USER, ETCD_ROOT_PASSWORD, ETCD_USERNAME, and ETCD_PASSWORD environment variables."
         fi
-        
+
         tail -f /dev/null
       '
     restart: always
@@ -184,25 +185,49 @@ services:
       - "${DATA_DIR}/components/kafka:/bitnami/kafka"
     environment:
       TZ: Asia/Shanghai
-
-      # Single-node KRaft, simple PLAINTEXT listener
+      # Single-node KRaft
       KAFKA_CFG_NODE_ID: 0
       KAFKA_CFG_PROCESS_ROLES: controller,broker
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
-
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+      # Listeners (PLAINTEXT only)
       KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
       KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
       KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
-
+      # Defaults
       KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_NUM_PARTITIONS: 8
+      # Keep heap modest for 512M limit
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx256m"
     healthcheck:
-      test: ["CMD", "bash", "-lc", "/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
-      interval: 5s
+      test: ["CMD-SHELL", "/opt/bitnami/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:9092 >/dev/null 2>&1"]
+      interval: 10s
       timeout: 5s
-      retries: 20
+      retries: 30
+      start_period: 120s
+    command:
+      - /bin/sh
+      - -c
+      - |
+        echo "Starting Kafka with topic creation..."
+        /opt/bitnami/scripts/kafka/entrypoint.sh /opt/bitnami/scripts/kafka/run.sh &
+        KAFKA_PID=$$!
+
+        echo "Waiting for Kafka to be ready..."
+        until /opt/bitnami/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:9092 >/dev/null 2>&1; do
+          echo "Waiting for Kafka..."
+          sleep 2
+        done
+
+        echo "Creating required topics..."
+        /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --topic toMongo --partitions 8 --replication-factor 1 || echo "Failed to create toMongo topic"
+        /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --topic toRedis --partitions 8 --replication-factor 1 || echo "Failed to create toRedis topic"
+        /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --topic toPush --partitions 8 --replication-factor 1 || echo "Failed to create toPush topic"
+        /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --topic toOfflinePush --partitions 8 --replication-factor 1 || echo "Failed to create toOfflinePush topic"
+        echo "Topics created successfully!"
+
+        wait $$KAFKA_PID
     deploy:
       resources:
         limits:
@@ -360,16 +385,11 @@ services:
         reservations:
           memory: 512M
     depends_on:
-      kafka:
-        condition: service_healthy
-      mongo:
-        condition: service_started
-      redis:
-        condition: service_started
-      etcd:
-        condition: service_started
-      minio:
-        condition: service_started
+      - mongo
+      - redis
+      - etcd
+      - kafka
+      - minio
     networks:
       - openim
 
@@ -405,17 +425,11 @@ services:
         reservations:
           memory: 1G
     depends_on:
-      kafka:
-        condition: service_healthy
-      openim-server:
-        condition: service_started
-      mongo:
-        condition: service_started
-      redis:
-        condition: service_started
-      etcd:
-        condition: service_started
-      minio:
-        condition: service_started
+      - mongo
+      - redis
+      - etcd
+      - kafka
+      - minio
+      - openim-server
     networks:
       - openim
