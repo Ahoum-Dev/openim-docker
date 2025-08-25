@@ -44,6 +44,12 @@ services:
       - MONGO_OPENIM_USERNAME=${MONGO_USERNAME}
       - MONGO_OPENIM_PASSWORD=${MONGO_PASSWORD}
     restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
     networks:
       - openim
 
@@ -67,6 +73,12 @@ services:
         "--appendonly",
         "yes",
       ]
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
     networks:
       - openim
 
@@ -164,6 +176,12 @@ services:
         tail -f /dev/null
       '
     restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
     networks:
       - openim
 
@@ -210,53 +228,39 @@ services:
       KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "INTERNAL"
 
       # Authentication configuration variables - comment out to disable auth
-      KAFKA_USERNAME: "openIM"
-      KAFKA_PASSWORD: "openIM123"
-    command: >
-      /bin/sh -c '
-        if [ -n "$${KAFKA_USERNAME}" ] && [ -n "$${KAFKA_PASSWORD}" ]; then
-          echo "=== Kafka SASL Authentication ENABLED ==="
-          echo "Username: $${KAFKA_USERNAME}"
-          
-          # Set environment variables for SASL authentication
-          export KAFKA_CFG_LISTENERS="SASL_PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094"
-          export KAFKA_CFG_ADVERTISED_LISTENERS="SASL_PLAINTEXT://kafka:9092,EXTERNAL://kafka:9094"
-          export KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP="CONTROLLER:PLAINTEXT,EXTERNAL:SASL_PLAINTEXT,SASL_PLAINTEXT:SASL_PLAINTEXT"
-          export KAFKA_CFG_SASL_ENABLED_MECHANISMS="PLAIN"
-          export KAFKA_CFG_SASL_MECHANISM_INTER_BROKER_PROTOCOL="PLAIN"
-          export KAFKA_CFG_INTER_BROKER_LISTENER_NAME="SASL_PLAINTEXT"
-          export KAFKA_CLIENT_USERS="$${KAFKA_USERNAME}"
-          export KAFKA_CLIENT_PASSWORDS="$${KAFKA_PASSWORD}"
-        fi
-        
+      # KAFKA_USERNAME: "openIM"
+      # KAFKA_PASSWORD: "openIM123"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        echo "Starting Kafka with topic creation..."
+        /opt/bitnami/scripts/kafka/entrypoint.sh /opt/bitnami/scripts/kafka/run.sh &
+        KAFKA_PID=$$!
+
         # Wait for Kafka to be ready
         echo "Waiting for Kafka to be ready..."
         until /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list &>/dev/null; do
           echo "Waiting for Kafka..."
           sleep 2
         done
-        echo "Kafka is ready!"
 
         # Create required topics if they don't exist
         echo "Creating required topics..."
-        if [ -n "$${KAFKA_USERNAME}" ] && [ -n "$${KAFKA_PASSWORD}" ]; then
-          # With SASL authentication
-          /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --command-config <(echo -e "security.protocol=SASL_PLAINTEXT\nsasl.mechanism=PLAIN\nsasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"$${KAFKA_USERNAME}\" password=\"$${KAFKA_PASSWORD}\";") --topic toMongo --partitions 8 --replication-factor 1
-          /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --command-config <(echo -e "security.protocol=SASL_PLAINTEXT\nsasl.mechanism=PLAIN\nsasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"$${KAFKA_USERNAME}\" password=\"$${KAFKA_PASSWORD}\";") --topic toRedis --partitions 8 --replication-factor 1
-          /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --command-config <(echo -e "security.protocol=SASL_PLAINTEXT\nsasl.mechanism=PLAIN\nsasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"$${KAFKA_USERNAME}\" password=\"$${KAFKA_PASSWORD}\";") --topic toPush --partitions 8 --replication-factor 1
-          /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --command-config <(echo -e "security.protocol=SASL_PLAINTEXT\nsasl.mechanism=PLAIN\nsasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"$${KAFKA_USERNAME}\" password=\"$${KAFKA_PASSWORD}\";") --topic toOfflinePush --partitions 8 --replication-factor 1
-        else
-          # Without authentication
-          /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --topic toMongo --partitions 8 --replication-factor 1
-          /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --topic toRedis --partitions 8 --replication-factor 1
-          /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --topic toPush --partitions 8 --replication-factor 1
-          /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --topic toOfflinePush --partitions 8 --replication-factor 1
-        fi
+        /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --topic toMongo --partitions 8 --replication-factor 1 || echo "Failed to create toMongo topic"
+        /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --topic toRedis --partitions 8 --replication-factor 1 || echo "Failed to create toRedis topic"
+        /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --topic toPush --partitions 8 --replication-factor 1 || echo "Failed to create toPush topic"
+        /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server localhost:9092 --topic toOfflinePush --partitions 8 --replication-factor 1 || echo "Failed to create toOfflinePush topic"
         echo "Topics created successfully!"
 
-        # Start Kafka with the configured environment
-        exec /opt/bitnami/scripts/kafka/entrypoint.sh /opt/bitnami/scripts/kafka/run.sh
-      '
+        # Keep the container running
+        wait $$KAFKA_PID
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
     networks:
       - openim
 
@@ -275,6 +279,12 @@ services:
       MINIO_ROOT_PASSWORD: "${MINIO_SECRET_ACCESS_KEY}"
     restart: always
     command: minio server /data --console-address ':9090'
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
     networks:
       - openim
 
@@ -392,8 +402,6 @@ services:
       - IMENV_MINIO_ACCESSKEYID=${MINIO_ACCESS_KEY_ID}
       - IMENV_MINIO_SECRETACCESSKEY=${MINIO_SECRET_ACCESS_KEY}
       - IMENV_SHARE_SECRET=${OPENIM_SECRET}
-      - IMENV_LOG_ISSTDOUT=${LOG_IS_STDOUT}
-      - IMENV_LOG_REMAINLOGLEVEL=${LOG_LEVEL}
       - IMENV_OPENIM_API_PROMETHEUS_GRAFANAURL=${GRAFANA_URL}
 
       # Additional ETCD configuration for proper authentication
@@ -402,13 +410,15 @@ services:
       - ETCD_PASSWORD=openIM123
       - ETCD_SCHEMA=http
 
-      # Additional Kafka configuration for SASL
+      # Kafka configuration without SASL (for now)
       - KAFKA_BROKERS=kafka:9092
-      - KAFKA_USERNAME=openIM
-      - KAFKA_PASSWORD=openIM123
-      - KAFKA_SASL_MECHANISM=PLAIN
-      - KAFKA_SECURITY_PROTOCOL=SASL_PLAINTEXT
     restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
     depends_on:
       - mongo
       - redis
@@ -439,8 +449,6 @@ services:
       - CHATENV_DISCOVERY_ETCD_USERNAME=${ETCD_USERNAME}
       - CHATENV_DISCOVERY_ETCD_PASSWORD=${ETCD_PASSWORD}
       - CHATENV_SHARE_OPENIM_APIURL=${API_URL}
-      - CHATENV_LOG_ISSTDOUT=${LOG_IS_STDOUT}
-      - CHATENV_LOG_REMAINLOGLEVEL=${LOG_LEVEL}
 
       # Additional ETCD configuration for proper authentication
       - ETCD_ENDPOINTS=http://etcd:2379
@@ -451,6 +459,12 @@ services:
       - "${CHAT_API_PORT}:10008"
       - "${ADMIN_API_PORT}:10009"
     restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
     depends_on:
       - mongo
       - redis
