@@ -375,6 +375,7 @@ services:
       timeout: 60s
       retries: 10
     environment:
+      # Existing IMENV variables
       - IMENV_MONGODB_ADDRESS=${MONGO_ADDRESS}
       - IMENV_MONGODB_USERNAME=${MONGO_USERNAME}
       - IMENV_MONGODB_PASSWORD=${MONGO_PASSWORD}
@@ -394,6 +395,19 @@ services:
       - IMENV_LOG_ISSTDOUT=${LOG_IS_STDOUT}
       - IMENV_LOG_REMAINLOGLEVEL=${LOG_LEVEL}
       - IMENV_OPENIM_API_PROMETHEUS_GRAFANAURL=${GRAFANA_URL}
+
+      # Additional ETCD configuration for proper authentication
+      - ETCD_ENDPOINTS=http://etcd:2379
+      - ETCD_USERNAME=openIM
+      - ETCD_PASSWORD=openIM123
+      - ETCD_SCHEMA=http
+
+      # Additional Kafka configuration for SASL
+      - KAFKA_BROKERS=kafka:9092
+      - KAFKA_USERNAME=openIM
+      - KAFKA_PASSWORD=openIM123
+      - KAFKA_SASL_MECHANISM=PLAIN
+      - KAFKA_SECURITY_PROTOCOL=SASL_PLAINTEXT
     restart: always
     depends_on:
       - mongo
@@ -414,6 +428,7 @@ services:
       timeout: 60s
       retries: 10
     environment:
+      # Existing CHATENV variables
       - CHATENV_MONGODB_ADDRESS=${MONGO_ADDRESS}
       - CHATENV_MONGODB_USERNAME=${MONGO_USERNAME}
       - CHATENV_MONGODB_PASSWORD=${MONGO_PASSWORD}
@@ -426,6 +441,12 @@ services:
       - CHATENV_SHARE_OPENIM_APIURL=${API_URL}
       - CHATENV_LOG_ISSTDOUT=${LOG_IS_STDOUT}
       - CHATENV_LOG_REMAINLOGLEVEL=${LOG_LEVEL}
+
+      # Additional ETCD configuration for proper authentication
+      - ETCD_ENDPOINTS=http://etcd:2379
+      - ETCD_USERNAME=openIM
+      - ETCD_PASSWORD=openIM123
+      - ETCD_SCHEMA=http
     ports:
       - "${CHAT_API_PORT}:10008"
       - "${ADMIN_API_PORT}:10009"
